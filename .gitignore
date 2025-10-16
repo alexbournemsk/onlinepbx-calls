@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Flask
+instance/
+.webassets-cache
+
+# Logs
+*.log
+logs/
+pbx_app.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+calls_history.db
+
+# API keys
+pbx_api_key.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerignore
+
+# Environment variables
+.env
+.env.local
+.env.production

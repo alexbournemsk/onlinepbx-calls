@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: pbx-calls
+    env: docker
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: FLASK_ENV
+        value: production
+

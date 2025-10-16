@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Статистика по дням</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .navigation {
+            margin-bottom: 20px;
+        }
+        .navigation a {
+            display: inline-block;
+            padding: 10px 20px;
+            margin-right: 10px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        .navigation a:hover {
+            background-color: #0056b3;
+        }
+        table { 
+            border-collapse: collapse; 
+            width: 100%; 
+            margin-top: 20px;
+        }
+        th, td { 
+            border: 1px solid #ddd; 
+            padding: 12px; 
+            text-align: left; 
+        }
+        th { 
+            background-color: #007bff; 
+            color: white; 
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        tr:hover {
+            background-color: #e9ecef;
+        }
+        .info-box {
+            background-color: #e7f3ff;
+            border-left: 4px solid #007bff;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .date-link {
+            color: #007bff;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .date-link:hover {
+            text-decoration: underline;
+        }
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+            font-size: 18px;
+        }
+        .filter-btn {
+            padding: 8px 16px;
+            margin-right: 10px;
+            border: 2px solid #007bff;
+            background-color: white;
+            color: #007bff;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .filter-btn:hover {
+            background-color: #007bff;
+            color: white;
+        }
+        .filter-btn.active {
+            background-color: #007bff;
+            color: white;
+        }
+        .hidden-row {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Статистика звонков по дням</h1>
+        
+        <div class="navigation">
+            <a href="/">Главная</a>
+            <a href="/trunks">Номера</a>
+            <a href="/stats" class="active">Статистика</a>
+        </div>
+        
+        <div class="info-box">
+            <strong>📊 Архив статистики</strong><br>
+            Здесь хранится статистика по всем запрошенным дням. Кликните на дату для просмотра детальной статистики.
+        </div>
+        
+        {% if comprehensive_stats and formatted_dates %}
+        <h2>Сводная статистика по номерам</h2>
+        
+        <!-- Кнопки фильтрации -->
+        <div style="margin-bottom: 15px;">
+            <button onclick="filterTable('all')" class="filter-btn active" id="filter-all">Все</button>
+            <button onclick="filterTable('kc')" class="filter-btn" id="filter-kc">КЦ</button>
+            <button onclick="filterTable('op')" class="filter-btn" id="filter-op">ОП</button>
+        </div>
+        
+        <div style="overflow-x: auto; margin-bottom: 30px;">
+            <table style="min-width: 600px;">
+                <thead>
+                    <tr>
+                        <th rowspan="3">Номер</th>
+                        {% for date in formatted_dates %}
+                        <th style="text-align: center;">{{ date.display }}</th>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        {% for date in formatted_dates %}
+                        <th style="text-align: center; font-size: 12px;">Количество звонков</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for number_stat in comprehensive_stats %}
+                    <!-- Строка с количеством звонков -->
+                    <tr>
+                        <td rowspan="3" style="vertical-align: top; text-align: left;">
+                            <strong>{{ number_stat.caller_number }}</strong><br>
+                            <small style="color: #666;">{{ number_stat.description if number_stat.description else '-' }}</small>
+                        </td>
+                        {% for date in formatted_dates %}
+                            {% if number_stat.dates[date.date] %}
+                                <td style="text-align: center;">{{ number_stat.dates[date.date].total_calls }}</td>
+                            {% else %}
+                                <td style="text-align: center;">-</td>
+                            {% endif %}
+                        {% endfor %}
+                    </tr>
+                    <!-- Строка со звонками >45с -->
+                    <tr>
+                        {% for date in formatted_dates %}
+                            {% if number_stat.dates[date.date] %}
+                                <td style="text-align: center;">{{ number_stat.dates[date.date].calls_over_45s }}</td>
+                            {% else %}
+                                <td style="text-align: center;">-</td>
+                            {% endif %}
+                        {% endfor %}
+                    </tr>
+                    <!-- Строка с процентами -->
+                    <tr>
+                        {% for date in formatted_dates %}
+                            {% if number_stat.dates[date.date] %}
+                                {% set day_data = number_stat.dates[date.date] %}
+                                <td style="text-align: center; color: {% if day_data.percentage_over_45s >= 20 %}#28a745{% elif day_data.percentage_over_45s >= 15 %}#90EE90{% elif day_data.percentage_over_45s >= 10 %}#ffc107{% else %}#dc3545{% endif %}; font-weight: bold;">
+                                    {{ "%.1f"|format(day_data.percentage_over_45s) }}%
+                                </td>
+                            {% else %}
+                                <td style="text-align: center;">-</td>
+                            {% endif %}
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        
+        <h2>Список дней со статистикой</h2>
+        {% if stats_dates %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Дата</th>
+                    <th>Период</th>
+                    <th>Всего звонков</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for stat in stats_dates %}
+                <tr>
+                    <td><a href="/stats/{{ stat.date }}" class="date-link">{{ stat.date_display }}</a></td>
+                    <td>{{ stat.period_label }}</td>
+                    <td><strong>{{ stat.total_calls }}</strong></td>
+                    <td><a href="/stats/{{ stat.date }}" class="date-link">Подробнее →</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="no-data">
+            <p>📭 Статистика пока не сохранена</p>
+            <p>Перейдите на страницы "За сегодня", "За вчера" или "За позавчера" для сохранения статистики</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        function filterTable(filterType) {
+            // Убираем активный класс со всех кнопок
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Добавляем активный класс к нажатой кнопке
+            document.getElementById('filter-' + filterType).classList.add('active');
+            
+            // Получаем все строки таблицы (группы по 3 строки для каждого номера)
+            const table = document.querySelector('table tbody');
+            if (!table) return;
+            
+            const rows = table.querySelectorAll('tr');
+            
+            // Проходим по группам из 3 строк (для каждого номера)
+            for (let i = 0; i < rows.length; i += 3) {
+                const firstRow = rows[i];
+                if (!firstRow) continue;
+                
+                // Получаем описание из первой строки группы
+                const descriptionCell = firstRow.querySelector('td small');
+                const description = descriptionCell ? descriptionCell.textContent.toLowerCase() : '';
+                
+                let shouldShow = false;
+                
+                if (filterType === 'all') {
+                    shouldShow = true;
+                } else if (filterType === 'kc') {
+                    shouldShow = description.includes('кц');
+                } else if (filterType === 'op') {
+                    shouldShow = description.includes('оп');
+                }
+                
+                // Показываем или скрываем все 3 строки группы
+                for (let j = 0; j < 3; j++) {
+                    const row = rows[i + j];
+                    if (row) {
+                        if (shouldShow) {
+                            row.classList.remove('hidden-row');
+                        } else {
+                            row.classList.add('hidden-row');
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
+

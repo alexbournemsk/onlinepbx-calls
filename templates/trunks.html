@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Статус номеров</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .navigation {
+            margin-bottom: 20px;
+        }
+        .navigation a {
+            display: inline-block;
+            padding: 10px 20px;
+            margin-right: 10px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        .navigation a:hover {
+            background-color: #0056b3;
+        }
+        .navigation a.active {
+            background-color: #28a745;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #333;
+        }
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        tr:hover {
+            background-color: #e9ecef;
+        }
+        .status {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .status.reged {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status.unreged {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .status.unknown {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .error {
+            color: #dc3545;
+            background-color: #f8d7da;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+            border: 1px solid #f5c6cb;
+        }
+        .no-data {
+            text-align: center;
+            color: #6c757d;
+            font-style: italic;
+            padding: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Статус номеров</h1>
+        
+        <div class="navigation">
+            <a href="/">Звонки</a>
+            <a href="/trunks" class="active">Статус номеров</a>
+            <a href="/stats">Статистика по дням</a>
+        </div>
+        
+        {% if error %}
+            <div class="error">Ошибка: {{ error }}</div>
+        {% endif %}
+        
+        {% if trunks %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Номер</th>
+                        <th>Имя</th>
+                        <th>Описание</th>
+                        <th>Назначение</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for trunk in trunks %}
+                        <tr>
+                            <td>{{ trunk.number }}</td>
+                            <td>{{ trunk.name }}</td>
+                            <td>{{ trunk.description }}</td>
+                            <td>{{ trunk.destination }}</td>
+                            <td>
+                                <span class="status {{ trunk.status|lower }}">
+                                    {{ trunk.status }}
+                                </span>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            {% if not error %}
+                <div class="no-data">
+                    Нет данных о номерах или они недоступны.
+                </div>
+            {% endif %}
+        {% endif %}
+    </div>
+</body>
+</html>

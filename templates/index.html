@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Звонки за последние 10 минут</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .navigation {
+            margin-bottom: 20px;
+        }
+        .navigation a {
+            display: inline-block;
+            padding: 10px 20px;
+            margin-right: 10px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        .navigation a:hover {
+            background-color: #0056b3;
+        }
+        .navigation a.active {
+            background-color: #28a745;
+        }
+        table { 
+            border-collapse: collapse; 
+            width: 100%; 
+            margin-top: 20px;
+        }
+        th, td { 
+            border: 1px solid #ddd; 
+            padding: 12px; 
+            text-align: left; 
+        }
+        th { 
+            background-color: #f8f9fa; 
+            font-weight: bold;
+            color: #333;
+        }
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        tr:hover {
+            background-color: #e9ecef;
+        }
+        .error { 
+            color: #dc3545;
+            background-color: #f8d7da;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+            border: 1px solid #f5c6cb;
+        }
+        .stats-table {
+            margin-bottom: 30px;
+            background-color: #f8f9fa;
+        }
+        .stats-table th {
+            background-color: #28a745;
+            color: white;
+            font-weight: bold;
+        }
+        .stats-table td {
+            text-align: center;
+        }
+        .stats-table td:first-child,
+        .stats-table td:nth-child(2) {
+            text-align: left;
+        }
+        h2 {
+            color: #333;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+        }
+        .time-intervals {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+        .time-intervals h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 16px;
+        }
+        .interval-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .interval-btn {
+            display: inline-block;
+            padding: 8px 16px;
+            background-color: #6c757d;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: background-color 0.3s;
+            border: none;
+            cursor: pointer;
+        }
+        .interval-btn:hover {
+            background-color: #5a6268;
+            color: white;
+            text-decoration: none;
+        }
+        .interval-btn:active {
+            background-color: #495057;
+        }
+        .interval-btn.active {
+            background-color: #007bff;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ title or 'Исходящие звонки за последние 10 минут' }}</h1>
+        
+        <div class="navigation">
+            <a href="/" class="active">Звонки</a>
+            <a href="/trunks">Статус номеров</a>
+            <a href="/stats">Статистика по дням</a>
+        </div>
+        
+        <div class="time-intervals">
+            <h3>Выберите период:</h3>
+            <div class="interval-buttons">
+                <a href="/" class="interval-btn">10 минут</a>
+                <a href="/1h" class="interval-btn">1 час</a>
+                <a href="/4h" class="interval-btn">4 часа</a>
+                <a href="/8h" class="interval-btn">8 часов</a>
+                <a href="/today" class="interval-btn" id="today-btn">За сегодня</a>
+                <a href="/yesterday" class="interval-btn" id="yesterday-btn">За вчера</a>
+                <a href="/day_before_yesterday" class="interval-btn" id="day-before-btn">За позавчера</a>
+            </div>
+        </div>
+    {% if error %}
+        <div class="error">Ошибка: {{ error }}</div>
+    {% endif %}
+    
+    <!-- Таблица статистики по номерам звонящих -->
+    {% if caller_stats %}
+    <h2>Статистика {{ period_label or '' }}</h2>
+    <table class="stats-table">
+        <thead>
+            <tr>
+                <th>Номер звонящего</th>
+                <th>Описание</th>
+                <th>Звонков</th>
+                <th>&gt;45с</th>
+                <th>% 45с</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for stat in caller_stats %}
+            <tr>
+                <td>{{ stat.caller_number }}</td>
+                <td>{{ stat.description or 'Нет описания' }}</td>
+                <td>{{ stat.total_calls }}</td>
+                <td>{{ stat.calls_over_45s }}</td>
+                <td>{{ stat.percentage_over_45s }}%</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+    
+    <h2>Список звонков</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Время начала</th>
+                <th>Номер звонящего</th>
+                <th>Описание</th>
+                <th>Номер назначения</th>
+                <th>Длительность (сек)</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for call in calls %}
+            <tr>
+                <td>{{ call.formatted_start_stamp }}</td>
+                <td>{{ call.caller_id_number }}</td>
+                <td>{{ call.description or 'Нет описания' }}</td>
+                <td>{{ call.destination_number }}</td>
+                <td>{{ call.billsec }}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="5">Нет исходящих звонков за последние 10 минут.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    
+    <script>
+        // Обновляем текст кнопок с датами и подсвечиваем активную кнопку
+        function updateButtonDates() {
+            const today = new Date();
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const dayBeforeYesterday = new Date(today);
+            dayBeforeYesterday.setDate(dayBeforeYesterday.getDate() - 2);
+            
+            function formatDate(date) {
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = date.getFullYear();
+                return `${day}.${month}.${year}`;
+            }
+            
+            const todayBtn = document.getElementById('today-btn');
+            const yesterdayBtn = document.getElementById('yesterday-btn');
+            const dayBeforeBtn = document.getElementById('day-before-btn');
+            
+            if (todayBtn) todayBtn.textContent = `За сегодня (${formatDate(today)})`;
+            if (yesterdayBtn) yesterdayBtn.textContent = `За вчера (${formatDate(yesterday)})`;
+            if (dayBeforeBtn) dayBeforeBtn.textContent = `За позавчера (${formatDate(dayBeforeYesterday)})`;
+        }
+        
+        // Подсвечиваем активную кнопку в зависимости от текущего URL
+        function highlightActiveButton() {
+            const currentPath = window.location.pathname;
+            const buttons = document.querySelectorAll('.interval-btn');
+            
+            buttons.forEach(button => {
+                button.classList.remove('active');
+                const href = button.getAttribute('href');
+                if (href === currentPath) {
+                    button.classList.add('active');
+                }
+            });
+        }
+        
+        // Выполняем обновление при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            updateButtonDates();
+            highlightActiveButton();
+        });
+    </script>
+</body>
+</html> 
