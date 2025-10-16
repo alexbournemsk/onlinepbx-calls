@@ -94,7 +94,98 @@ def get_valid_api_key():
 
 def init_db():
     """Инициализация базы данных SQLite"""
-    conn = sqlite3.connect(DB_FILE)
+    import os
+    logging.info(f"=== DATABASE INITIALIZATION DEBUG ===")
+    logging.info(f"DB_FILE path: {DB_FILE}")
+    logging.info(f"Current working directory: {os.getcwd()}")
+    logging.info(f"DB file exists: {os.path.exists(DB_FILE)}")
+    logging.info(f"Current user: {os.getuid() if hasattr(os, 'getuid') else 'Windows'}")
+    
+    # ДЕТАЛЬНАЯ ИНФОРМАЦИЯ О ФАЙЛЕ БД
+    if os.path.exists(DB_FILE):
+        import stat
+        file_stat = os.stat(DB_FILE)
+        logging.info(f"=== FILE DETAILS ===")
+        logging.info(f"File size: {file_stat.st_size} bytes")
+        logging.info(f"File mode (octal): {oct(file_stat.st_mode)}")
+        logging.info(f"File permissions: {stat.filemode(file_stat.st_mode)}")
+        logging.info(f"File owner UID: {file_stat.st_uid}")
+        logging.info(f"File group GID: {file_stat.st_gid}")
+        logging.info(f"Is regular file: {stat.S_ISREG(file_stat.st_mode)}")
+        logging.info(f"Is directory: {stat.S_ISDIR(file_stat.st_mode)}")
+        logging.info(f"Is link: {stat.S_ISLNK(file_stat.st_mode)}")
+        
+        # Проверяем, можем ли читать/писать
+        logging.info(f"Can read: {os.access(DB_FILE, os.R_OK)}")
+        logging.info(f"Can write: {os.access(DB_FILE, os.W_OK)}")
+        logging.info(f"Can execute: {os.access(DB_FILE, os.X_OK)}")
+        
+        # Пробуем открыть файл для чтения
+        try:
+            with open(DB_FILE, 'rb') as f:
+                content = f.read(16)
+                logging.info(f"File content (first 16 bytes): {content}")
+        except Exception as e:
+            logging.error(f"Cannot read file: {e}")
+    
+    # Список всех файлов в текущей директории
+    logging.info(f"=== FILES IN CURRENT DIRECTORY ===")
+    try:
+        files = os.listdir('.')
+        for f in files:
+            fstat = os.stat(f)
+            logging.info(f"  {f}: size={fstat.st_size}, mode={oct(fstat.st_mode)}")
+    except Exception as e:
+        logging.error(f"Cannot list directory: {e}")
+    
+    # Проверяем права доступа к текущей директории
+    try:
+        test_file = 'test_write_permissions.tmp'
+        with open(test_file, 'w') as f:
+            f.write('test')
+        os.remove(test_file)
+        logging.info(f"Write permissions in current dir: OK")
+    except Exception as e:
+        logging.error(f"Write permissions in current dir: FAILED - {e}")
+    
+    # Пытаемся создать директорию, если нужно
+    db_dir = os.path.dirname(DB_FILE)
+    if db_dir and not os.path.exists(db_dir):
+        logging.info(f"Creating directory: {db_dir}")
+        os.makedirs(db_dir, exist_ok=True)
+    
+    logging.info(f"Attempting to connect to database...")
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        logging.info(f"Database connection: SUCCESS")
+    except Exception as e:
+        logging.error(f"Database connection: FAILED - {e}")
+        logging.error(f"Exception type: {type(e)}")
+        import traceback
+        logging.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Пробуем удалить файл/директорию и создать заново
+        logging.info(f"=== ATTEMPTING TO RECREATE DATABASE FILE ===")
+        try:
+            if os.path.exists(DB_FILE):
+                logging.info(f"Removing existing file/directory...")
+                if os.path.isdir(DB_FILE):
+                    logging.info(f"Removing directory: {DB_FILE}")
+                    import shutil
+                    shutil.rmtree(DB_FILE)
+                else:
+                    logging.info(f"Removing file: {DB_FILE}")
+                    os.remove(DB_FILE)
+                logging.info(f"File/directory removed successfully")
+            
+            logging.info(f"Creating new database file...")
+            conn = sqlite3.connect(DB_FILE)
+            logging.info(f"Database connection after recreation: SUCCESS")
+        except Exception as e2:
+            logging.error(f"Recreation also failed: {e2}")
+            import traceback
+            logging.error(f"Traceback: {traceback.format_exc()}")
+            raise
     cursor = conn.cursor()
     
     # Проверяем, существует ли таблица calls со старой структурой
@@ -1164,4 +1255,7 @@ def api_debug():
         return jsonify({'error': f'Ошибка запроса к API: {e}'}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    logging.info("=" * 60)
+    logging.info("STARTING FLASK APPLICATION IN DEBUG MODE")
+    logging.info("=" * 60)
+    app.run(host='0.0.0.0', port=8000, debug=False) 

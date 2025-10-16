@@ -27,14 +27,13 @@ RUN mkdir -p logs && \
     rm -rf calls_history.db && \
     touch calls_history.db
 
-# Создаем пользователя для безопасности
-RUN useradd --create-home --shell /bin/bash app && \
-    chown -R app:app /app
-
-USER app
+# ВРЕМЕННО ОТКЛЮЧАЕМ ПОЛЬЗОВАТЕЛЯ ДЛЯ ОТЛАДКИ
+# RUN useradd --create-home --shell /bin/bash app && \
+#     chown -R app:app /app
+# USER app
 
 # Открываем порт
 EXPOSE 8000
 
-# Команда запуска через Gunicorn
-CMD ["gunicorn", "--config", "gunicorn.conf.py", "wsgi:app"]
+# ВРЕМЕННО: Запуск через Flask напрямую для отладки с подробными логами
+CMD ["python", "-u", "app.py"]
