@@ -6,8 +6,6 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./logs:/app/logs
-      - ./calls_history.db:/app/calls_history.db
       - ./pbx_api_key.json:/app/pbx_api_key.json
     environment:
       - FLASK_ENV=production
