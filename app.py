@@ -164,13 +164,19 @@ def init_db():
         import traceback
         logging.error(f"Traceback: {traceback.format_exc()}")
         
-        # Пробуем удалить файл и создать заново
+        # Пробуем удалить файл/директорию и создать заново
         logging.info(f"=== ATTEMPTING TO RECREATE DATABASE FILE ===")
         try:
             if os.path.exists(DB_FILE):
-                logging.info(f"Removing existing file...")
-                os.remove(DB_FILE)
-                logging.info(f"File removed successfully")
+                logging.info(f"Removing existing file/directory...")
+                if os.path.isdir(DB_FILE):
+                    logging.info(f"Removing directory: {DB_FILE}")
+                    import shutil
+                    shutil.rmtree(DB_FILE)
+                else:
+                    logging.info(f"Removing file: {DB_FILE}")
+                    os.remove(DB_FILE)
+                logging.info(f"File/directory removed successfully")
             
             logging.info(f"Creating new database file...")
             conn = sqlite3.connect(DB_FILE)

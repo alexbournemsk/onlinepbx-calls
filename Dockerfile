@@ -24,6 +24,7 @@ COPY . .
 # Создаем директории и файлы
 RUN mkdir -p logs && \
     echo '{}' > pbx_api_key.json && \
+    rm -rf calls_history.db && \
     touch calls_history.db
 
 # ВРЕМЕННО ОТКЛЮЧАЕМ ПОЛЬЗОВАТЕЛЯ ДЛЯ ОТЛАДКИ
