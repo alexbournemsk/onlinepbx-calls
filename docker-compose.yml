@@ -11,6 +11,8 @@ services:
       - ./pbx_api_key.json:/app/pbx_api_key.json
     environment:
       - FLASK_ENV=production
+      - DOMAIN=guitardo.onpbx.ru
+      - AUTH_KEY=qJqxwdH7ZccfzS1F3UoStTRJSZHvfWTR5Dt4kiv7Og
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
