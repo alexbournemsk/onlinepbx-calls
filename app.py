@@ -94,7 +94,39 @@ def get_valid_api_key():
 
 def init_db():
     """Инициализация базы данных SQLite"""
-    conn = sqlite3.connect(DB_FILE)
+    import os
+    logging.info(f"=== DATABASE INITIALIZATION DEBUG ===")
+    logging.info(f"DB_FILE path: {DB_FILE}")
+    logging.info(f"Current working directory: {os.getcwd()}")
+    logging.info(f"DB file exists: {os.path.exists(DB_FILE)}")
+    logging.info(f"Current user: {os.getuid() if hasattr(os, 'getuid') else 'Windows'}")
+    
+    # Проверяем права доступа к текущей директории
+    try:
+        test_file = 'test_write_permissions.tmp'
+        with open(test_file, 'w') as f:
+            f.write('test')
+        os.remove(test_file)
+        logging.info(f"Write permissions: OK")
+    except Exception as e:
+        logging.error(f"Write permissions: FAILED - {e}")
+    
+    # Пытаемся создать директорию, если нужно
+    db_dir = os.path.dirname(DB_FILE)
+    if db_dir and not os.path.exists(db_dir):
+        logging.info(f"Creating directory: {db_dir}")
+        os.makedirs(db_dir, exist_ok=True)
+    
+    logging.info(f"Attempting to connect to database...")
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        logging.info(f"Database connection: SUCCESS")
+    except Exception as e:
+        logging.error(f"Database connection: FAILED - {e}")
+        logging.error(f"Exception type: {type(e)}")
+        import traceback
+        logging.error(f"Traceback: {traceback.format_exc()}")
+        raise
     cursor = conn.cursor()
     
     # Проверяем, существует ли таблица calls со старой структурой
@@ -1164,4 +1196,7 @@ def api_debug():
         return jsonify({'error': f'Ошибка запроса к API: {e}'}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    logging.info("=" * 60)
+    logging.info("STARTING FLASK APPLICATION IN DEBUG MODE")
+    logging.info("=" * 60)
+    app.run(host='0.0.0.0', port=8000, debug=False) 
