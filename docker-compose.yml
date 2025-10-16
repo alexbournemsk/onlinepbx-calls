@@ -5,8 +5,7 @@ services:
     build: .
     ports:
       - "8000:8000"
-    volumes:
-      - ./pbx_api_key.json:/app/pbx_api_key.json
+    # volumes убраны - файлы создаются внутри контейнера
     environment:
       - FLASK_ENV=production
       - DOMAIN=guitardo.onpbx.ru

@@ -21,12 +21,14 @@ RUN pip install gunicorn
 # Копируем код приложения
 COPY . .
 
-# Создаем директории для логов
-RUN mkdir -p logs
+# Создаем директории и файлы
+RUN mkdir -p logs && \
+    echo '{}' > pbx_api_key.json
 
 # Создаем пользователя для безопасности
-RUN useradd --create-home --shell /bin/bash app
-RUN chown -R app:app /app
+RUN useradd --create-home --shell /bin/bash app && \
+    chown -R app:app /app
+
 USER app
 
 # Открываем порт
