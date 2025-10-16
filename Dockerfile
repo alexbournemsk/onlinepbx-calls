@@ -23,7 +23,8 @@ COPY . .
 
 # Создаем директории и файлы
 RUN mkdir -p logs && \
-    echo '{}' > pbx_api_key.json
+    echo '{}' > pbx_api_key.json && \
+    touch calls_history.db
 
 # Создаем пользователя для безопасности
 RUN useradd --create-home --shell /bin/bash app && \
