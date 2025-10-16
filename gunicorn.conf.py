@@ -10,9 +10,9 @@ bind = "0.0.0.0:8000"
 timeout = 120
 keepalive = 2
 
-# Логирование
-accesslog = "logs/access.log"
-errorlog = "logs/error.log"
+# Логирование (выводим в консоль, а не в файлы)
+accesslog = "-"
+errorlog = "-"
 loglevel = "info"
 
 # Перезапуск при изменении файлов (только для разработки)
