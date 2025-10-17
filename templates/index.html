@@ -134,6 +134,107 @@
             background-color: #007bff;
             font-weight: bold;
         }
+        
+        /* Стили для модального окна */
+        .modal {
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 0;
+            border: none;
+            border-radius: 8px;
+            width: 400px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .modal-header {
+            padding: 20px;
+            background-color: #007bff;
+            color: white;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-header h3 {
+            margin: 0;
+            font-size: 18px;
+        }
+        
+        .close {
+            color: white;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+        
+        .close:hover {
+            opacity: 0.7;
+        }
+        
+        .modal-body {
+            padding: 20px;
+        }
+        
+        .modal-body label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .modal-body input[type="date"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        
+        .btn-confirm, .btn-cancel {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        
+        .btn-confirm {
+            background-color: #28a745;
+            color: white;
+        }
+        
+        .btn-confirm:hover {
+            background-color: #218838;
+        }
+        
+        .btn-cancel {
+            background-color: #6c757d;
+            color: white;
+        }
+        
+        .btn-cancel:hover {
+            background-color: #5a6268;
+        }
     </style>
 </head>
 <body>
@@ -156,6 +257,7 @@
                 <a href="/today" class="interval-btn" id="today-btn">За сегодня</a>
                 <a href="/yesterday" class="interval-btn" id="yesterday-btn">За вчера</a>
                 <a href="/day_before_yesterday" class="interval-btn" id="day-before-btn">За позавчера</a>
+                <button class="interval-btn" id="calendar-btn" onclick="openDatePicker()">📅 Выбрать дату</button>
             </div>
         </div>
     {% if error %}
@@ -215,6 +317,24 @@
         </tbody>
     </table>
     </div>
+
+    <!-- Модальное окно для выбора даты -->
+    <div id="datePickerModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Выберите дату для выгрузки звонков</h3>
+                <span class="close" onclick="closeDatePicker()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <label for="selectedDate">Дата:</label>
+                <input type="date" id="selectedDate" name="selectedDate">
+                <div class="modal-buttons">
+                    <button class="btn-confirm" onclick="confirmDateSelection()">Подтвердить</button>
+                    <button class="btn-cancel" onclick="closeDatePicker()">Отмена</button>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <script>
         // Обновляем текст кнопок с датами и подсвечиваем активную кнопку
@@ -249,10 +369,72 @@
             buttons.forEach(button => {
                 button.classList.remove('active');
                 const href = button.getAttribute('href');
+                
+                // Проверяем обычные маршруты
                 if (href === currentPath) {
                     button.classList.add('active');
                 }
+                
+                // Проверяем маршрут с выбранной датой
+                if (currentPath.startsWith('/date/') && button.id === 'calendar-btn') {
+                    button.classList.add('active');
+                }
             });
+        }
+        
+        // Функции для работы с модальным окном выбора даты
+        function openDatePicker() {
+            const modal = document.getElementById('datePickerModal');
+            const dateInput = document.getElementById('selectedDate');
+            
+            // Устанавливаем максимальную дату как сегодня
+            const today = new Date();
+            const maxDate = today.toISOString().split('T')[0];
+            dateInput.max = maxDate;
+            
+            // Устанавливаем дату по умолчанию (вчера)
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            dateInput.value = yesterday.toISOString().split('T')[0];
+            
+            modal.style.display = 'block';
+        }
+        
+        function closeDatePicker() {
+            const modal = document.getElementById('datePickerModal');
+            modal.style.display = 'none';
+        }
+        
+        function confirmDateSelection() {
+            const dateInput = document.getElementById('selectedDate');
+            const selectedDate = dateInput.value;
+            
+            if (!selectedDate) {
+                alert('Пожалуйста, выберите дату');
+                return;
+            }
+            
+            // Проверяем, что дата не в будущем
+            const today = new Date();
+            const selectedDateObj = new Date(selectedDate);
+            if (selectedDateObj > today) {
+                alert('Нельзя выбрать дату в будущем');
+                return;
+            }
+            
+            // Закрываем модальное окно
+            closeDatePicker();
+            
+            // Перенаправляем на страницу с данными за выбранную дату
+            window.location.href = `/date/${selectedDate}`;
+        }
+        
+        // Закрытие модального окна при клике вне его
+        window.onclick = function(event) {
+            const modal = document.getElementById('datePickerModal');
+            if (event.target === modal) {
+                closeDatePicker();
+            }
         }
         
         // Выполняем обновление при загрузке страницы

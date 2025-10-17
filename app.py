@@ -1097,6 +1097,56 @@ def calls_day_before_yesterday():
     calls, caller_stats, error, period_label = get_calls_data_for_period(start_time, end_time, f"позавчера ({date_str_display})", date_str_db)
     return render_template('index.html', calls=calls, caller_stats=caller_stats, error=error, title=f"Звонки за позавчера ({date_str_display})", period_label=period_label)
 
+@app.route('/date/<date_str>')
+def calls_by_date(date_str):
+    """Звонки за выбранную дату"""
+    from datetime import datetime, time
+    try:
+        # Проверяем формат даты (YYYY-MM-DD)
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+        
+        # Проверяем, что дата не в будущем
+        today = datetime.now().date()
+        if date_obj.date() > today:
+            return render_template('index.html', 
+                                 calls=[], 
+                                 caller_stats=[], 
+                                 error='Нельзя выбрать дату в будущем', 
+                                 title="Ошибка", 
+                                 period_label="")
+        
+        # Создаем временные метки для начала и конца дня
+        start_of_day = datetime.combine(date_obj.date(), time.min)
+        end_of_day = datetime.combine(date_obj.date(), time.max)
+        start_time = int(start_of_day.timestamp())
+        end_time = int(end_of_day.timestamp())
+        
+        date_str_display = date_obj.strftime('%d.%m.%Y')
+        
+        # Вызываем функцию с фиксированными временными метками
+        calls, caller_stats, error, period_label = get_calls_data_for_period(start_time, end_time, f"за {date_str_display}", date_str)
+        return render_template('index.html', 
+                             calls=calls, 
+                             caller_stats=caller_stats, 
+                             error=error, 
+                             title=f"Звонки за {date_str_display}", 
+                             period_label=period_label)
+    except ValueError:
+        return render_template('index.html', 
+                             calls=[], 
+                             caller_stats=[], 
+                             error='Неверный формат даты. Используйте формат YYYY-MM-DD', 
+                             title="Ошибка", 
+                             period_label="")
+    except Exception as e:
+        logging.error(f'Error in calls_by_date: {e}')
+        return render_template('index.html', 
+                             calls=[], 
+                             caller_stats=[], 
+                             error=f'Ошибка: {e}', 
+                             title="Ошибка", 
+                             period_label="")
+
 @app.route('/trunks')
 def trunks():
     """Страница для отображения статуса номеров"""
