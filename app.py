@@ -416,7 +416,13 @@ def get_trunks_from_cache(max_age_seconds=3600):
 
 def save_daily_stats(caller_stats, start_stamp, end_stamp, date_str):
     """Сохраняет статистику по номерам за определенный день"""
+    logging.info(f'=== SAVE_DAILY_STATS DEBUG ===')
+    logging.info(f'caller_stats count: {len(caller_stats) if caller_stats else 0}')
+    logging.info(f'date_str: {date_str}')
+    logging.info(f'start_stamp: {start_stamp}, end_stamp: {end_stamp}')
+    
     if not caller_stats:
+        logging.info('No caller_stats provided, returning')
         return
     
     # Определяем, является ли этот день сегодняшним
@@ -428,9 +434,11 @@ def save_daily_stats(caller_stats, start_stamp, end_stamp, date_str):
     cursor = conn.cursor()
     
     try:
+        logging.info(f'Processing {len(caller_stats)} stats records')
         for stat in caller_stats:
             caller_number = stat.get('caller_number', '')
             if not caller_number:
+                logging.info(f'Skipping stat with empty caller_number: {stat}')
                 continue
             
             # Проверяем, есть ли уже запись для этого дня и номера
@@ -440,13 +448,16 @@ def save_daily_stats(caller_stats, start_stamp, end_stamp, date_str):
             ''', (date_str, caller_number))
             
             existing = cursor.fetchone()
+            logging.info(f'Checking caller_number: {caller_number}, existing: {existing is not None}, is_today: {is_today}')
             
             if existing and not is_today:
                 # Для прошлых дней не обновляем данные
+                logging.info(f'Skipping update for past date {date_str}, caller_number: {caller_number}')
                 continue
             
             if existing:
                 # Обновляем существующую запись (только для сегодняшнего дня)
+                logging.info(f'Updating existing record for {date_str}, caller_number: {caller_number}')
                 cursor.execute('''
                     UPDATE daily_stats 
                     SET total_calls = ?,
@@ -469,6 +480,7 @@ def save_daily_stats(caller_stats, start_stamp, end_stamp, date_str):
                 ))
             else:
                 # Создаем новую запись
+                logging.info(f'Inserting new record for {date_str}, caller_number: {caller_number}')
                 cursor.execute('''
                     INSERT INTO daily_stats 
                     (date, start_stamp, end_stamp, caller_number, description, 
@@ -622,6 +634,8 @@ def get_comprehensive_stats():
 
 def calculate_caller_stats(calls):
     """Вычисляет статистику по уникальным номерам звонящих"""
+    logging.info(f'=== CALCULATE_CALLER_STATS DEBUG ===')
+    logging.info(f'Processing {len(calls)} calls')
     stats = {}
     
     for call in calls:
@@ -658,6 +672,7 @@ def calculate_caller_stats(calls):
     
     # Сортируем по количеству звонков (по убыванию)
     result.sort(key=lambda x: x['total_calls'], reverse=True)
+    logging.info(f'Calculated stats for {len(result)} unique caller numbers')
     return result
 
 def get_trunks_data():
@@ -895,6 +910,7 @@ def get_calls_data_for_period(start_time, end_time, title, date_str=None):
         caller_stats = calculate_caller_stats(calls)
         
         # Сохраняем статистику в БД (если её ещё нет)
+        logging.info(f'Calling save_daily_stats for date {date_str} (from cache)')
         save_daily_stats(caller_stats, start_time, end_time, date_str)
         
         return calls, caller_stats, error, period_label
@@ -940,6 +956,10 @@ def get_calls_data_for_period(start_time, end_time, title, date_str=None):
             
             # Вычисляем статистику по номерам звонящих
             caller_stats = calculate_caller_stats(calls)
+            
+            # Сохраняем статистику в БД
+            save_daily_stats(caller_stats, start_time, end_time, date_str)
+            
             break  # успешный запрос, выходим из цикла
         except requests.exceptions.Timeout:
             error = 'Превышено время ожидания ответа от API.'
