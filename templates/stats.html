@@ -102,11 +102,45 @@
         .hidden-row {
             display: none;
         }
+        .mode-btn {
+            padding: 10px 24px;
+            margin-right: 10px;
+            border: 2px solid #007bff;
+            background-color: white;
+            color: #007bff;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        .mode-btn:hover {
+            background-color: #e7f3ff;
+        }
+        .mode-btn.active {
+            background-color: #007bff;
+            color: white;
+        }
+        .week-header {
+            background-color: #007bff !important;
+            color: white !important;
+            text-align: center;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        .metric-label {
+            font-size: 13px;
+            color: #666;
+            font-weight: normal;
+        }
+        .number-row-group {
+            border-bottom: 3px solid #333;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Статистика звонков по дням</h1>
+        <h1>Статистика звонков</h1>
         
         <div class="navigation">
             <a href="/">Главная</a>
@@ -114,12 +148,22 @@
             <a href="/stats" class="active">Статистика</a>
         </div>
         
-        <div class="info-box">
-            <strong>📊 Архив статистики</strong><br>
-            Здесь хранится статистика по всем запрошенным дням. Кликните на дату для просмотра детальной статистики.
+        <!-- Переключатель режима -->
+        <div style="margin-bottom: 20px;">
+            <button onclick="switchMode('daily')" class="mode-btn {% if mode == 'daily' %}active{% endif %}" id="mode-daily">По дням</button>
+            <button onclick="switchMode('weekly')" class="mode-btn {% if mode == 'weekly' %}active{% endif %}" id="mode-weekly">По неделям</button>
         </div>
         
-        {% if comprehensive_stats and formatted_dates %}
+        <div class="info-box">
+            <strong>📊 Архив статистики</strong><br>
+            {% if mode == 'weekly' %}
+            Здесь отображается статистика по неделям с суммированными данными за каждую неделю.
+            {% else %}
+            Здесь хранится статистика по всем запрошенным дням. Кликните на дату для просмотра детальной статистики.
+            {% endif %}
+        </div>
+        
+        {% if comprehensive_stats %}
         <h2>Сводная статистика по номерам</h2>
         
         <!-- Кнопки фильтрации -->
@@ -130,10 +174,82 @@
         </div>
         
         <div style="overflow-x: auto; margin-bottom: 30px;">
-            <table style="min-width: 600px;">
+            {% if mode == 'weekly' and weekly_periods %}
+            <!-- Таблица для недельного режима -->
+            <table style="min-width: 800px;" id="stats-table">
+                <thead>
+                    <tr>
+                        <th rowspan="2" style="vertical-align: middle;">Номер</th>
+                        <th rowspan="2" style="vertical-align: middle; min-width: 140px;"></th>
+                        {% for week in weekly_periods %}
+                        <th class="week-header">
+                            <div>{{ week.label }}</div>
+                            {% if week.description %}
+                            <div style="font-size: 11px; font-weight: normal; margin-top: 3px;">{{ week.description }}</div>
+                            {% endif %}
+                        </th>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        {% for week in weekly_periods %}
+                        <th style="text-align: center; font-size: 12px; background-color: #f8f9fa; color: #333;">Количество звонков</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for number_stat in comprehensive_stats %}
+                    <!-- Строка 1: всего звонков -->
+                    <tr class="number-data-row" data-description="{{ number_stat.description|lower }}">
+                        <td rowspan="3" style="vertical-align: top; text-align: left; border-bottom: 3px solid #333;">
+                            <strong>{{ number_stat.caller_number }}</strong><br>
+                            <small style="color: #666;">{{ number_stat.description if number_stat.description else '-' }}</small>
+                        </td>
+                        <td style="text-align: left; padding-left: 15px;"><span class="metric-label">всего звонков</span></td>
+                        {% for week in weekly_periods %}
+                            {% set week_data = number_stat.weeks[week.key] %}
+                            {% if week_data and week_data.total_calls > 0 %}
+                                <td style="text-align: center;"><strong>{{ week_data.total_calls }}</strong></td>
+                            {% else %}
+                                <td style="text-align: center;">-</td>
+                            {% endif %}
+                        {% endfor %}
+                    </tr>
+                    <!-- Строка 2: количество звонков >45с -->
+                    <tr class="number-data-row" data-description="{{ number_stat.description|lower }}">
+                        <td style="text-align: left; padding-left: 15px;"><span class="metric-label">количество звонков >45с</span></td>
+                        {% for week in weekly_periods %}
+                            {% set week_data = number_stat.weeks[week.key] %}
+                            {% if week_data and week_data.total_calls > 0 %}
+                                <td style="text-align: center;">{{ week_data.calls_over_45s }}</td>
+                            {% else %}
+                                <td style="text-align: center;">-</td>
+                            {% endif %}
+                        {% endfor %}
+                    </tr>
+                    <!-- Строка 3: % >45с -->
+                    <tr class="number-data-row" data-description="{{ number_stat.description|lower }}">
+                        <td style="text-align: left; padding-left: 15px; border-bottom: 3px solid #333;"><span class="metric-label">% >45с</span></td>
+                        {% for week in weekly_periods %}
+                            {% set week_data = number_stat.weeks[week.key] %}
+                            {% if week_data and week_data.total_calls > 0 %}
+                                <td style="text-align: center; border-bottom: 3px solid #333; color: {% if week_data.percentage_over_45s >= 20 %}#28a745{% elif week_data.percentage_over_45s >= 10 %}#ffc107{% else %}#dc3545{% endif %}; font-weight: bold;">
+                                    {{ "%.1f"|format(week_data.percentage_over_45s) }}%
+                                </td>
+                            {% else %}
+                                <td style="text-align: center; border-bottom: 3px solid #333;">-</td>
+                            {% endif %}
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% elif mode == 'daily' and formatted_dates %}
+            <!-- Таблица для дневного режима -->
+            <table style="min-width: 600px;" id="stats-table">
                 <thead>
                     <tr>
                         <th rowspan="3">Номер</th>
+                        <th rowspan="3" style="vertical-align: middle; min-width: 140px;"></th>
                         {% for date in formatted_dates %}
                         <th style="text-align: center;">{{ date.display }}</th>
                         {% endfor %}
@@ -147,21 +263,23 @@
                 <tbody>
                     {% for number_stat in comprehensive_stats %}
                     <!-- Строка с количеством звонков -->
-                    <tr>
-                        <td rowspan="3" style="vertical-align: top; text-align: left;">
+                    <tr class="number-data-row" data-description="{{ number_stat.description|lower }}">
+                        <td rowspan="3" style="vertical-align: top; text-align: left; border-bottom: 3px solid #333;">
                             <strong>{{ number_stat.caller_number }}</strong><br>
                             <small style="color: #666;">{{ number_stat.description if number_stat.description else '-' }}</small>
                         </td>
+                        <td style="text-align: left; padding-left: 15px;"><span class="metric-label">всего звонков</span></td>
                         {% for date in formatted_dates %}
                             {% if number_stat.dates[date.date] %}
-                                <td style="text-align: center;">{{ number_stat.dates[date.date].total_calls }}</td>
+                                <td style="text-align: center;"><strong>{{ number_stat.dates[date.date].total_calls }}</strong></td>
                             {% else %}
                                 <td style="text-align: center;">-</td>
                             {% endif %}
                         {% endfor %}
                     </tr>
                     <!-- Строка со звонками >45с -->
-                    <tr>
+                    <tr class="number-data-row" data-description="{{ number_stat.description|lower }}">
+                        <td style="text-align: left; padding-left: 15px;"><span class="metric-label">количество звонков >45с</span></td>
                         {% for date in formatted_dates %}
                             {% if number_stat.dates[date.date] %}
                                 <td style="text-align: center;">{{ number_stat.dates[date.date].calls_over_45s }}</td>
@@ -171,21 +289,23 @@
                         {% endfor %}
                     </tr>
                     <!-- Строка с процентами -->
-                    <tr>
+                    <tr class="number-data-row" data-description="{{ number_stat.description|lower }}">
+                        <td style="text-align: left; padding-left: 15px; border-bottom: 3px solid #333;"><span class="metric-label">% >45с</span></td>
                         {% for date in formatted_dates %}
                             {% if number_stat.dates[date.date] %}
                                 {% set day_data = number_stat.dates[date.date] %}
-                                <td style="text-align: center; color: {% if day_data.percentage_over_45s >= 20 %}#28a745{% elif day_data.percentage_over_45s >= 15 %}#90EE90{% elif day_data.percentage_over_45s >= 10 %}#ffc107{% else %}#dc3545{% endif %}; font-weight: bold;">
+                                <td style="text-align: center; border-bottom: 3px solid #333; color: {% if day_data.percentage_over_45s >= 20 %}#28a745{% elif day_data.percentage_over_45s >= 15 %}#90EE90{% elif day_data.percentage_over_45s >= 10 %}#ffc107{% else %}#dc3545{% endif %}; font-weight: bold;">
                                     {{ "%.1f"|format(day_data.percentage_over_45s) }}%
                                 </td>
                             {% else %}
-                                <td style="text-align: center;">-</td>
+                                <td style="text-align: center; border-bottom: 3px solid #333;">-</td>
                             {% endif %}
                         {% endfor %}
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
+            {% endif %}
         </div>
         {% endif %}
         
@@ -220,6 +340,11 @@
     </div>
 
     <script>
+        function switchMode(mode) {
+            // Перенаправляем на ту же страницу с параметром mode
+            window.location.href = '/stats?mode=' + mode;
+        }
+        
         function filterTable(filterType) {
             // Убираем активный класс со всех кнопок
             document.querySelectorAll('.filter-btn').forEach(btn => {
@@ -229,20 +354,19 @@
             // Добавляем активный класс к нажатой кнопке
             document.getElementById('filter-' + filterType).classList.add('active');
             
-            // Получаем все строки таблицы (группы по 3 строки для каждого номера)
-            const table = document.querySelector('table tbody');
+            // Получаем все строки таблицы с классом number-data-row
+            const table = document.querySelector('#stats-table tbody');
             if (!table) return;
             
-            const rows = table.querySelectorAll('tr');
+            const rows = table.querySelectorAll('tr.number-data-row');
             
             // Проходим по группам из 3 строк (для каждого номера)
             for (let i = 0; i < rows.length; i += 3) {
                 const firstRow = rows[i];
                 if (!firstRow) continue;
                 
-                // Получаем описание из первой строки группы
-                const descriptionCell = firstRow.querySelector('td small');
-                const description = descriptionCell ? descriptionCell.textContent.toLowerCase() : '';
+                // Получаем описание из data-атрибута
+                const description = firstRow.getAttribute('data-description') || '';
                 
                 let shouldShow = false;
                 

@@ -632,6 +632,145 @@ def get_comprehensive_stats():
     
     return result, dates
 
+def get_comprehensive_stats_weekly():
+    """Получает сводную статистику всех номеров по неделям"""
+    from datetime import datetime, timedelta
+    
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # Получаем все уникальные номера
+    cursor.execute('''
+        SELECT DISTINCT caller_number, description
+        FROM daily_stats 
+        ORDER BY caller_number
+    ''')
+    
+    numbers = cursor.fetchall()
+    
+    # Получаем все даты
+    cursor.execute('''
+        SELECT DISTINCT date 
+        FROM daily_stats 
+        ORDER BY date DESC
+    ''')
+    
+    all_dates = [row[0] for row in cursor.fetchall()]
+    
+    if not all_dates:
+        conn.close()
+        return [], []
+    
+    # Группируем даты по неделям
+    # Определяем недели от вчерашнего дня (данные за сегодня могут быть неполными)
+    today = datetime.now().date()
+    yesterday = today - timedelta(days=1)
+    
+    # Создаем недельные периоды
+    weekly_periods = []
+    
+    # Последние 7 дней (со вчера назад на 6 дней)
+    week_end = yesterday
+    week_start = yesterday - timedelta(days=6)
+    weekly_periods.append({
+        'start': week_start,
+        'end': week_end,
+        'label': f"{week_start.strftime('%d.%m')}-{week_end.strftime('%d.%m')}",
+        'description': 'Последние 7 дней',
+        'key': f"{week_start.isoformat()}_{week_end.isoformat()}"
+    })
+    
+    # Прошлая неделя (с 8 дней назад до 14 дней назад)
+    week_end = yesterday - timedelta(days=7)
+    week_start = week_end - timedelta(days=6)
+    weekly_periods.append({
+        'start': week_start,
+        'end': week_end,
+        'label': f"{week_start.strftime('%d.%m')}-{week_end.strftime('%d.%m')}",
+        'description': 'Прошлая неделя',
+        'key': f"{week_start.isoformat()}_{week_end.isoformat()}"
+    })
+    
+    # Добавляем еще несколько недель назад (до 5 недель)
+    for i in range(2, 6):
+        week_end = yesterday - timedelta(days=7*i)
+        week_start = week_end - timedelta(days=6)
+        weekly_periods.append({
+            'start': week_start,
+            'end': week_end,
+            'label': f"{week_start.strftime('%d.%m')}-{week_end.strftime('%d.%m')}",
+            'description': '',
+            'key': f"{week_start.isoformat()}_{week_end.isoformat()}"
+        })
+    
+    # Получаем все данные статистики
+    cursor.execute('''
+        SELECT date, caller_number, description, total_calls, calls_over_45s
+        FROM daily_stats 
+        ORDER BY date DESC, caller_number
+    ''')
+    
+    stats_data = cursor.fetchall()
+    conn.close()
+    
+    # Создаем словарь для быстрого поиска данных по дате и номеру
+    stats_dict = {}
+    for row in stats_data:
+        date_str, caller_number, description, total_calls, calls_over_45s = row
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+        
+        if caller_number not in stats_dict:
+            stats_dict[caller_number] = {
+                'description': description or '',
+                'dates': {}
+            }
+        
+        stats_dict[caller_number]['dates'][date_obj] = {
+            'total_calls': total_calls,
+            'calls_over_45s': calls_over_45s
+        }
+    
+    # Агрегируем данные по неделям
+    result = []
+    for caller_number, description in numbers:
+        number_stats = {
+            'caller_number': caller_number,
+            'description': description or '',
+            'weeks': {}
+        }
+        
+        caller_data = stats_dict.get(caller_number, {'dates': {}})
+        
+        for week in weekly_periods:
+            total_calls = 0
+            calls_over_45s = 0
+            
+            # Суммируем данные за все дни недели
+            current_date = week['start']
+            while current_date <= week['end']:
+                if current_date in caller_data['dates']:
+                    total_calls += caller_data['dates'][current_date]['total_calls']
+                    calls_over_45s += caller_data['dates'][current_date]['calls_over_45s']
+                current_date += timedelta(days=1)
+            
+            # Вычисляем процент
+            percentage = (calls_over_45s / total_calls * 100) if total_calls > 0 else 0
+            
+            number_stats['weeks'][week['key']] = {
+                'total_calls': total_calls,
+                'calls_over_45s': calls_over_45s,
+                'percentage_over_45s': percentage
+            }
+        
+        result.append(number_stats)
+    
+    # Сортируем по количеству звонков за последнюю неделю
+    if weekly_periods:
+        first_week_key = weekly_periods[0]['key']
+        result.sort(key=lambda x: x['weeks'].get(first_week_key, {}).get('total_calls', 0), reverse=True)
+    
+    return result, weekly_periods
+
 def calculate_caller_stats(calls):
     """Вычисляет статистику по уникальным номерам звонящих"""
     logging.info(f'=== CALCULATE_CALLER_STATS DEBUG ===')
@@ -1233,34 +1372,49 @@ def trunks():
 
 @app.route('/stats')
 def stats_page():
-    """Страница статистики по дням"""
+    """Страница статистики по дням или по неделям"""
+    from flask import request
     logging.info('Entering stats_page function')
+    
+    # Получаем режим отображения (daily или weekly)
+    mode = request.args.get('mode', 'daily')
     
     # Получаем список всех дат со статистикой
     stats_dates = get_all_stats_dates()
     
-    # Получаем сводную статистику
-    comprehensive_stats, dates = get_comprehensive_stats()
-    
-    # Форматируем даты для отображения
+    # Форматируем даты для отображения в списке дней
     for stat in stats_dates:
         date_obj = datetime.strptime(stat['date'], '%Y-%m-%d')
         stat['date_display'] = date_obj.strftime('%d.%m.%Y')
         stat['period_label'] = format_period_label(stat['start_stamp'], stat['end_stamp'])
     
-    # Форматируем даты для заголовков таблицы
-    formatted_dates = []
-    for date in dates:
-        date_obj = datetime.strptime(date, '%Y-%m-%d')
-        formatted_dates.append({
-            'date': date,
-            'display': date_obj.strftime('%d.%m')
-        })
-    
-    return render_template('stats.html', 
-                         stats_dates=stats_dates, 
-                         comprehensive_stats=comprehensive_stats,
-                         formatted_dates=formatted_dates)
+    if mode == 'weekly':
+        # Получаем недельную статистику
+        comprehensive_stats, weekly_periods = get_comprehensive_stats_weekly()
+        
+        return render_template('stats.html', 
+                             stats_dates=stats_dates, 
+                             comprehensive_stats=comprehensive_stats,
+                             weekly_periods=weekly_periods,
+                             mode='weekly')
+    else:
+        # Получаем дневную статистику (по умолчанию)
+        comprehensive_stats, dates = get_comprehensive_stats()
+        
+        # Форматируем даты для заголовков таблицы
+        formatted_dates = []
+        for date in dates:
+            date_obj = datetime.strptime(date, '%Y-%m-%d')
+            formatted_dates.append({
+                'date': date,
+                'display': date_obj.strftime('%d.%m')
+            })
+        
+        return render_template('stats.html', 
+                             stats_dates=stats_dates, 
+                             comprehensive_stats=comprehensive_stats,
+                             formatted_dates=formatted_dates,
+                             mode='daily')
 
 @app.route('/stats/<date>')
 def stats_detail(date):
@@ -1323,6 +1477,57 @@ def api_debug():
         })
     except Exception as e:
         return jsonify({'error': f'Ошибка запроса к API: {e}'}), 500
+
+@app.route('/api/debug/weekly')
+def debug_weekly():
+    """Отладочный endpoint для проверки недельной статистики"""
+    from datetime import datetime, timedelta
+    
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # Получаем все даты из базы
+    cursor.execute('SELECT DISTINCT date FROM daily_stats ORDER BY date DESC')
+    db_dates = [row[0] for row in cursor.fetchall()]
+    
+    # Получаем сегодня и вчера
+    today = datetime.now().date()
+    yesterday = today - timedelta(days=1)
+    
+    # Формируем первый период (последние 7 дней)
+    week_end = yesterday
+    week_start = yesterday - timedelta(days=6)
+    
+    # Получаем все данные для проверки
+    cursor.execute('''
+        SELECT date, caller_number, total_calls, calls_over_45s
+        FROM daily_stats 
+        WHERE date >= ? AND date <= ?
+        ORDER BY date DESC, caller_number
+    ''', (week_start.isoformat(), week_end.isoformat()))
+    
+    data_in_period = cursor.fetchall()
+    conn.close()
+    
+    return jsonify({
+        'today': today.isoformat(),
+        'yesterday': yesterday.isoformat(),
+        'last_7_days_period': {
+            'start': week_start.isoformat(),
+            'end': week_end.isoformat(),
+            'label': f"{week_start.strftime('%d.%m')}-{week_end.strftime('%d.%m')}"
+        },
+        'dates_in_db': db_dates,
+        'data_in_last_7_days': [
+            {
+                'date': row[0],
+                'caller_number': row[1],
+                'total_calls': row[2],
+                'calls_over_45s': row[3]
+            } for row in data_in_period
+        ],
+        'count_in_period': len(data_in_period)
+    })
 
 if __name__ == '__main__':
     logging.info("=" * 60)
