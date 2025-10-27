@@ -8,7 +8,6 @@ services:
     volumes:
       - ./app.py:/app/app.py
       - ./templates:/app/templates
-      - ./calls_history.db:/app/calls_history.db
     environment:
       - FLASK_ENV=production
       - DOMAIN=guitardo.onpbx.ru
