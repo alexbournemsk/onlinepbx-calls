@@ -6,8 +6,8 @@ import json
 from datetime import datetime
 from config import API_URL, AUTH_KEY, AUTH_URL, DOMAIN
 import logging
+import sqlite3
 import hashlib
-from db_adapter import db_adapter
 
 KEY_FILE = 'pbx_api_key.json'
 DB_FILE = 'calls_history.db'
@@ -93,8 +93,190 @@ def get_valid_api_key():
     return api_key
 
 def init_db():
-    """Инициализация базы данных"""
-    db_adapter.init_database()
+    """Инициализация базы данных SQLite"""
+    import os
+    logging.info(f"=== DATABASE INITIALIZATION DEBUG ===")
+    logging.info(f"DB_FILE path: {DB_FILE}")
+    logging.info(f"Current working directory: {os.getcwd()}")
+    logging.info(f"DB file exists: {os.path.exists(DB_FILE)}")
+    logging.info(f"Current user: {os.getuid() if hasattr(os, 'getuid') else 'Windows'}")
+    
+    # ДЕТАЛЬНАЯ ИНФОРМАЦИЯ О ФАЙЛЕ БД
+    if os.path.exists(DB_FILE):
+        import stat
+        file_stat = os.stat(DB_FILE)
+        logging.info(f"=== FILE DETAILS ===")
+        logging.info(f"File size: {file_stat.st_size} bytes")
+        logging.info(f"File mode (octal): {oct(file_stat.st_mode)}")
+        logging.info(f"File permissions: {stat.filemode(file_stat.st_mode)}")
+        logging.info(f"File owner UID: {file_stat.st_uid}")
+        logging.info(f"File group GID: {file_stat.st_gid}")
+        logging.info(f"Is regular file: {stat.S_ISREG(file_stat.st_mode)}")
+        logging.info(f"Is directory: {stat.S_ISDIR(file_stat.st_mode)}")
+        logging.info(f"Is link: {stat.S_ISLNK(file_stat.st_mode)}")
+        
+        # Проверяем, можем ли читать/писать
+        logging.info(f"Can read: {os.access(DB_FILE, os.R_OK)}")
+        logging.info(f"Can write: {os.access(DB_FILE, os.W_OK)}")
+        logging.info(f"Can execute: {os.access(DB_FILE, os.X_OK)}")
+        
+        # Пробуем открыть файл для чтения
+        try:
+            with open(DB_FILE, 'rb') as f:
+                content = f.read(16)
+                logging.info(f"File content (first 16 bytes): {content}")
+        except Exception as e:
+            logging.error(f"Cannot read file: {e}")
+    
+    # Список всех файлов в текущей директории
+    logging.info(f"=== FILES IN CURRENT DIRECTORY ===")
+    try:
+        files = os.listdir('.')
+        for f in files:
+            fstat = os.stat(f)
+            logging.info(f"  {f}: size={fstat.st_size}, mode={oct(fstat.st_mode)}")
+    except Exception as e:
+        logging.error(f"Cannot list directory: {e}")
+    
+    # Проверяем права доступа к текущей директории
+    try:
+        test_file = 'test_write_permissions.tmp'
+        with open(test_file, 'w') as f:
+            f.write('test')
+        os.remove(test_file)
+        logging.info(f"Write permissions in current dir: OK")
+    except Exception as e:
+        logging.error(f"Write permissions in current dir: FAILED - {e}")
+    
+    # Пытаемся создать директорию, если нужно
+    db_dir = os.path.dirname(DB_FILE)
+    if db_dir and not os.path.exists(db_dir):
+        logging.info(f"Creating directory: {db_dir}")
+        os.makedirs(db_dir, exist_ok=True)
+    
+    logging.info(f"Attempting to connect to database...")
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        logging.info(f"Database connection: SUCCESS")
+    except Exception as e:
+        logging.error(f"Database connection: FAILED - {e}")
+        logging.error(f"Exception type: {type(e)}")
+        import traceback
+        logging.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Пробуем удалить файл/директорию и создать заново
+        logging.info(f"=== ATTEMPTING TO RECREATE DATABASE FILE ===")
+        try:
+            if os.path.exists(DB_FILE):
+                logging.info(f"Removing existing file/directory...")
+                if os.path.isdir(DB_FILE):
+                    logging.info(f"Removing directory: {DB_FILE}")
+                    import shutil
+                    shutil.rmtree(DB_FILE)
+                else:
+                    logging.info(f"Removing file: {DB_FILE}")
+                    os.remove(DB_FILE)
+                logging.info(f"File/directory removed successfully")
+            
+            logging.info(f"Creating new database file...")
+            conn = sqlite3.connect(DB_FILE)
+            logging.info(f"Database connection after recreation: SUCCESS")
+        except Exception as e2:
+            logging.error(f"Recreation also failed: {e2}")
+            import traceback
+            logging.error(f"Traceback: {traceback.format_exc()}")
+            raise
+    cursor = conn.cursor()
+    
+    # Проверяем, существует ли таблица calls со старой структурой
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='calls'")
+    table_exists = cursor.fetchone() is not None
+    
+    if table_exists:
+        # Проверяем наличие колонки end_stamp
+        cursor.execute("PRAGMA table_info(calls)")
+        columns = [column[1] for column in cursor.fetchall()]
+        if 'end_stamp' not in columns or 'call_data' not in columns:
+            logging.info('Old table structure detected, recreating calls table...')
+            cursor.execute('DROP TABLE IF EXISTS calls')
+            table_exists = False
+    
+    # Таблица для хранения звонков
+    if not table_exists:
+        cursor.execute('''
+            CREATE TABLE calls (
+                id TEXT PRIMARY KEY,
+                start_stamp INTEGER NOT NULL,
+                end_stamp INTEGER NOT NULL,
+                caller_id_number TEXT,
+                destination_number TEXT,
+                billsec INTEGER,
+                duration INTEGER,
+                accountcode TEXT,
+                gateway TEXT,
+                caller_id_name TEXT,
+                description TEXT,
+                call_data TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        logging.info('Created calls table with new structure')
+    
+    # Индексы для быстрого поиска по временным интервалам
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_start_stamp ON calls(start_stamp)
+    ''')
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_end_stamp ON calls(end_stamp)
+    ''')
+    
+    # Таблица для хранения trunk'ов (номеров)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS trunks (
+            number TEXT PRIMARY KEY,
+            description TEXT,
+            trunk_data TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Таблица для кеша запросов (для отслеживания запрошенных периодов)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS cache_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_hash TEXT UNIQUE,
+            start_stamp INTEGER,
+            end_stamp INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Таблица для статистики по дням
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS daily_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            start_stamp INTEGER NOT NULL,
+            end_stamp INTEGER NOT NULL,
+            caller_number TEXT NOT NULL,
+            description TEXT,
+            total_calls INTEGER NOT NULL,
+            calls_over_45s INTEGER NOT NULL,
+            percentage_over_45s REAL NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(date, caller_number)
+        )
+    ''')
+    
+    # Индекс для быстрого поиска по дате
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_date ON daily_stats(date)
+    ''')
+    
+    conn.commit()
+    conn.close()
+    logging.info('Database initialized successfully')
 
 def get_request_hash(start_stamp, end_stamp):
     """Создает хеш для идентификации уникального запроса"""
@@ -102,21 +284,26 @@ def get_request_hash(start_stamp, end_stamp):
 
 def is_period_cached(start_stamp, end_stamp):
     """Проверяет, есть ли данные за указанный период в кеше"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # Проверяем, есть ли запись о таком запросе
     request_hash = get_request_hash(start_stamp, end_stamp)
-    result = db_adapter.execute_query('''
+    cursor.execute('''
         SELECT COUNT(*) FROM cache_requests 
         WHERE request_hash = ?
-    ''', (request_hash,), fetch='one')
+    ''', (request_hash,))
     
-    if db_adapter.use_postgres:
-        cached = result['count'] > 0 if result else False
-    else:
-        cached = result[0] > 0 if result else False
+    cached = cursor.fetchone()[0] > 0
+    conn.close()
     
     return cached
 
 def save_calls_to_cache(calls, start_stamp, end_stamp):
     """Сохраняет звонки в кеш"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
     try:
         # Сохраняем каждый звонок
         for call in calls:
@@ -125,35 +312,12 @@ def save_calls_to_cache(calls, start_stamp, end_stamp):
                 f"{call.get('start_stamp')}_{call.get('caller_id_number')}_{call.get('destination_number')}".encode()
             ).hexdigest()
             
-            # Для PostgreSQL используем ON CONFLICT, для SQLite - INSERT OR REPLACE
-            if db_adapter.use_postgres:
-                query = '''
-                    INSERT INTO calls 
-                    (id, start_stamp, end_stamp, caller_id_number, destination_number, 
-                     billsec, duration, accountcode, gateway, caller_id_name, description, call_data)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (id) DO UPDATE SET
-                        start_stamp = EXCLUDED.start_stamp,
-                        end_stamp = EXCLUDED.end_stamp,
-                        caller_id_number = EXCLUDED.caller_id_number,
-                        destination_number = EXCLUDED.destination_number,
-                        billsec = EXCLUDED.billsec,
-                        duration = EXCLUDED.duration,
-                        accountcode = EXCLUDED.accountcode,
-                        gateway = EXCLUDED.gateway,
-                        caller_id_name = EXCLUDED.caller_id_name,
-                        description = EXCLUDED.description,
-                        call_data = EXCLUDED.call_data
-                '''
-            else:
-                query = '''
+            cursor.execute('''
                 INSERT OR REPLACE INTO calls 
                 (id, start_stamp, end_stamp, caller_id_number, destination_number, 
                  billsec, duration, accountcode, gateway, caller_id_name, description, call_data)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                '''
-            
-            db_adapter.execute_query(query, (
+            ''', (
                 call_id,
                 call.get('start_stamp', 0),
                 call.get('end_stamp', 0),
@@ -170,97 +334,80 @@ def save_calls_to_cache(calls, start_stamp, end_stamp):
         
         # Сохраняем информацию о запросе
         request_hash = get_request_hash(start_stamp, end_stamp)
-        if db_adapter.use_postgres:
-            query = '''
-                INSERT INTO cache_requests 
-                (request_hash, start_stamp, end_stamp)
-                VALUES (?, ?, ?)
-                ON CONFLICT (request_hash) DO UPDATE SET
-                    start_stamp = EXCLUDED.start_stamp,
-                    end_stamp = EXCLUDED.end_stamp
-            '''
-        else:
-            query = '''
+        cursor.execute('''
             INSERT OR REPLACE INTO cache_requests 
             (request_hash, start_stamp, end_stamp)
             VALUES (?, ?, ?)
-            '''
+        ''', (request_hash, start_stamp, end_stamp))
         
-        db_adapter.execute_query(query, (request_hash, start_stamp, end_stamp))
-        
+        conn.commit()
         logging.info(f'Saved {len(calls)} calls to cache for period {start_stamp}-{end_stamp}')
     except Exception as e:
         logging.error(f'Error saving calls to cache: {e}')
+        conn.rollback()
+    finally:
+        conn.close()
 
 def get_calls_from_cache(start_stamp, end_stamp):
     """Получает звонки из кеша за указанный период"""
-    rows = db_adapter.execute_query('''
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
         SELECT call_data FROM calls 
         WHERE start_stamp >= ? AND start_stamp <= ?
         AND accountcode = 'outbound'
         ORDER BY start_stamp DESC
-    ''', (start_stamp, end_stamp), fetch='all')
+    ''', (start_stamp, end_stamp))
     
-    if db_adapter.use_postgres:
-        calls = [json.loads(row['call_data']) for row in rows]
-    else:
-        calls = [json.loads(row[0]) for row in rows]
+    rows = cursor.fetchall()
+    conn.close()
     
+    calls = [json.loads(row[0]) for row in rows]
     logging.info(f'Retrieved {len(calls)} calls from cache for period {start_stamp}-{end_stamp}')
     return calls
 
 def save_trunks_to_cache(trunks_data):
     """Сохраняет данные о trunk'ах в кеш"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
     try:
         for trunk in trunks_data:
             number = trunk.get('number', '')
             description = trunk.get('description', '')
             
             if number:
-                if db_adapter.use_postgres:
-                    query = '''
-                        INSERT INTO trunks 
-                        (number, description, trunk_data, updated_at)
-                        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                        ON CONFLICT (number) DO UPDATE SET
-                            description = EXCLUDED.description,
-                            trunk_data = EXCLUDED.trunk_data,
-                            updated_at = CURRENT_TIMESTAMP
-                    '''
-                else:
-                    query = '''
+                cursor.execute('''
                     INSERT OR REPLACE INTO trunks 
                     (number, description, trunk_data, updated_at)
                     VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                    '''
+                ''', (number, description, json.dumps(trunk)))
         
-                db_adapter.execute_query(query, (number, description, json.dumps(trunk)))
-        
+        conn.commit()
         logging.info(f'Saved {len(trunks_data)} trunks to cache')
     except Exception as e:
         logging.error(f'Error saving trunks to cache: {e}')
+        conn.rollback()
+    finally:
+        conn.close()
 
 def get_trunks_from_cache(max_age_seconds=3600):
     """Получает trunk'и из кеша, если они не старше указанного времени"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
     # Проверяем, есть ли актуальные данные (не старше max_age_seconds)
-    if db_adapter.use_postgres:
-        query = '''
-            SELECT trunk_data FROM trunks 
-            WHERE updated_at > NOW() - INTERVAL '? seconds'
-        '''
-    else:
-        query = '''
+    cursor.execute('''
         SELECT trunk_data FROM trunks 
         WHERE datetime(updated_at) > datetime('now', '-' || ? || ' seconds')
-        '''
+    ''', (max_age_seconds,))
     
-    rows = db_adapter.execute_query(query, (max_age_seconds,), fetch='all')
+    rows = cursor.fetchall()
+    conn.close()
     
     if rows:
-        if db_adapter.use_postgres:
-            trunks = [json.loads(row['trunk_data']) for row in rows]
-        else:
-            trunks = [json.loads(row[0]) for row in rows]
+        trunks = [json.loads(row[0]) for row in rows]
         logging.info(f'Retrieved {len(trunks)} trunks from cache')
         return trunks
     else:
@@ -283,6 +430,9 @@ def save_daily_stats(caller_stats, start_stamp, end_stamp, date_str):
     today_str = datetime.now().strftime('%Y-%m-%d')
     is_today = (date_str == today_str)
     
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
     try:
         logging.info(f'Processing {len(caller_stats)} stats records')
         for stat in caller_stats:
@@ -292,11 +442,12 @@ def save_daily_stats(caller_stats, start_stamp, end_stamp, date_str):
                 continue
             
             # Проверяем, есть ли уже запись для этого дня и номера
-            existing = db_adapter.execute_query('''
+            cursor.execute('''
                 SELECT id FROM daily_stats 
                 WHERE date = ? AND caller_number = ?
-            ''', (date_str, caller_number), fetch='one')
+            ''', (date_str, caller_number))
             
+            existing = cursor.fetchone()
             logging.info(f'Checking caller_number: {caller_number}, existing: {existing is not None}, is_today: {is_today}')
             
             if existing and not is_today:
@@ -307,7 +458,7 @@ def save_daily_stats(caller_stats, start_stamp, end_stamp, date_str):
             if existing:
                 # Обновляем существующую запись (только для сегодняшнего дня)
                 logging.info(f'Updating existing record for {date_str}, caller_number: {caller_number}')
-                db_adapter.execute_query('''
+                cursor.execute('''
                     UPDATE daily_stats 
                     SET total_calls = ?,
                         calls_over_45s = ?,
@@ -330,7 +481,7 @@ def save_daily_stats(caller_stats, start_stamp, end_stamp, date_str):
             else:
                 # Создаем новую запись
                 logging.info(f'Inserting new record for {date_str}, caller_number: {caller_number}')
-                db_adapter.execute_query('''
+                cursor.execute('''
                     INSERT INTO daily_stats 
                     (date, start_stamp, end_stamp, caller_number, description, 
                      total_calls, calls_over_45s, percentage_over_45s)
@@ -346,112 +497,105 @@ def save_daily_stats(caller_stats, start_stamp, end_stamp, date_str):
                     stat.get('percentage_over_45s', 0.0)
                 ))
         
+        conn.commit()
         logging.info(f'Saved {len(caller_stats)} stats records for date {date_str}')
     except Exception as e:
         logging.error(f'Error saving daily stats: {e}')
+        conn.rollback()
+    finally:
+        conn.close()
 
 def get_daily_stats_by_date(date_str):
     """Получает статистику за определенный день"""
-    rows = db_adapter.execute_query('''
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
         SELECT caller_number, description, total_calls, calls_over_45s, percentage_over_45s
         FROM daily_stats 
         WHERE date = ?
         ORDER BY total_calls DESC
-    ''', (date_str,), fetch='all')
+    ''', (date_str,))
+    
+    rows = cursor.fetchall()
+    conn.close()
     
     result = []
     for row in rows:
-        if db_adapter.use_postgres:
-            result.append({
-                'caller_number': row['caller_number'],
-                'description': row['description'],
-                'total_calls': row['total_calls'],
-                'calls_over_45s': row['calls_over_45s'],
-                'percentage_over_45s': row['percentage_over_45s']
-            })
-        else:
-            result.append({
-                'caller_number': row[0],
-                'description': row[1],
-                'total_calls': row[2],
-                'calls_over_45s': row[3],
-                'percentage_over_45s': row[4]
-            })
+        result.append({
+            'caller_number': row[0],
+            'description': row[1],
+            'total_calls': row[2],
+            'calls_over_45s': row[3],
+            'percentage_over_45s': row[4]
+        })
     
     return result
 
 def get_all_stats_dates():
     """Получает список всех дат, для которых есть статистика"""
-    rows = db_adapter.execute_query('''
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
         SELECT DISTINCT date, start_stamp, end_stamp, 
                SUM(total_calls) as total_calls_count
         FROM daily_stats 
         GROUP BY date
         ORDER BY date DESC
-    ''', fetch='all')
+    ''')
+    
+    rows = cursor.fetchall()
+    conn.close()
     
     result = []
     for row in rows:
-        if db_adapter.use_postgres:
-            result.append({
-                'date': row['date'],
-                'start_stamp': row['start_stamp'],
-                'end_stamp': row['end_stamp'],
-                'total_calls': row['total_calls_count']
-            })
-        else:
-            result.append({
-                'date': row[0],
-                'start_stamp': row[1],
-                'end_stamp': row[2],
-                'total_calls': row[3]
-            })
+        result.append({
+            'date': row[0],
+            'start_stamp': row[1],
+            'end_stamp': row[2],
+            'total_calls': row[3]
+        })
     
     return result
 
 def get_comprehensive_stats():
     """Получает сводную статистику всех номеров по всем дням"""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
     # Получаем все уникальные номера
-    numbers_rows = db_adapter.execute_query('''
+    cursor.execute('''
         SELECT DISTINCT caller_number, description
         FROM daily_stats 
         ORDER BY caller_number
-    ''', fetch='all')
+    ''')
+    
+    numbers = cursor.fetchall()
     
     # Получаем все даты
-    dates_rows = db_adapter.execute_query('''
+    cursor.execute('''
         SELECT DISTINCT date 
         FROM daily_stats 
         ORDER BY date DESC
-    ''', fetch='all')
+    ''')
     
-    if db_adapter.use_postgres:
-        numbers = [(row['caller_number'], row['description']) for row in numbers_rows]
-        dates = [row['date'] for row in dates_rows]
-    else:
-        numbers = numbers_rows
-        dates = [row[0] for row in dates_rows]
+    dates = [row[0] for row in cursor.fetchall()]
     
     # Получаем все данные статистики
-    stats_rows = db_adapter.execute_query('''
+    cursor.execute('''
         SELECT date, caller_number, description, total_calls, calls_over_45s, percentage_over_45s
         FROM daily_stats 
         ORDER BY date DESC, caller_number
-    ''', fetch='all')
+    ''')
+    
+    stats_data = cursor.fetchall()
+    conn.close()
     
     # Создаем словарь для быстрого поиска
     stats_dict = {}
-    for row in stats_rows:
-        if db_adapter.use_postgres:
-            date = row['date']
-            caller_number = row['caller_number']
-            description = row['description']
-            total_calls = row['total_calls']
-            calls_over_45s = row['calls_over_45s']
-            percentage_over_45s = row['percentage_over_45s']
-        else:
-            date, caller_number, description, total_calls, calls_over_45s, percentage_over_45s = row
-        
+    for row in stats_data:
+        date, caller_number, description, total_calls, calls_over_45s, percentage_over_45s = row
         key = (date, caller_number)
         stats_dict[key] = {
             'total_calls': total_calls,
@@ -492,28 +636,29 @@ def get_comprehensive_stats_weekly():
     """Получает сводную статистику всех номеров по неделям"""
     from datetime import datetime, timedelta
     
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
     # Получаем все уникальные номера
-    numbers_rows = db_adapter.execute_query('''
+    cursor.execute('''
         SELECT DISTINCT caller_number, description
         FROM daily_stats 
         ORDER BY caller_number
-    ''', fetch='all')
+    ''')
+    
+    numbers = cursor.fetchall()
     
     # Получаем все даты
-    dates_rows = db_adapter.execute_query('''
+    cursor.execute('''
         SELECT DISTINCT date 
         FROM daily_stats 
         ORDER BY date DESC
-    ''', fetch='all')
+    ''')
     
-    if db_adapter.use_postgres:
-        numbers = [(row['caller_number'], row['description']) for row in numbers_rows]
-        all_dates = [row['date'] for row in dates_rows]
-    else:
-        numbers = numbers_rows
-        all_dates = [row[0] for row in dates_rows]
+    all_dates = [row[0] for row in cursor.fetchall()]
     
     if not all_dates:
+        conn.close()
         return [], []
     
     # Группируем даты по неделям
@@ -559,24 +704,19 @@ def get_comprehensive_stats_weekly():
         })
     
     # Получаем все данные статистики
-    stats_rows = db_adapter.execute_query('''
+    cursor.execute('''
         SELECT date, caller_number, description, total_calls, calls_over_45s
         FROM daily_stats 
         ORDER BY date DESC, caller_number
-    ''', fetch='all')
+    ''')
+    
+    stats_data = cursor.fetchall()
+    conn.close()
     
     # Создаем словарь для быстрого поиска данных по дате и номеру
     stats_dict = {}
-    for row in stats_rows:
-        if db_adapter.use_postgres:
-            date_str = row['date']
-            caller_number = row['caller_number']
-            description = row['description']
-            total_calls = row['total_calls']
-            calls_over_45s = row['calls_over_45s']
-        else:
-            date_str, caller_number, description, total_calls, calls_over_45s = row
-        
+    for row in stats_data:
+        date_str, caller_number, description, total_calls, calls_over_45s = row
         date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
         
         if caller_number not in stats_dict:
@@ -1343,16 +1483,12 @@ def debug_weekly():
     """Отладочный endpoint для проверки недельной статистики"""
     from datetime import datetime, timedelta
     
-    # Получаем все даты из базы
-    dates_rows = db_adapter.execute_query(
-        'SELECT DISTINCT date FROM daily_stats ORDER BY date DESC', 
-        fetch='all'
-    )
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
     
-    if db_adapter.use_postgres:
-        db_dates = [row['date'] for row in dates_rows]
-    else:
-        db_dates = [row[0] for row in dates_rows]
+    # Получаем все даты из базы
+    cursor.execute('SELECT DISTINCT date FROM daily_stats ORDER BY date DESC')
+    db_dates = [row[0] for row in cursor.fetchall()]
     
     # Получаем сегодня и вчера
     today = datetime.now().date()
@@ -1363,31 +1499,15 @@ def debug_weekly():
     week_start = yesterday - timedelta(days=6)
     
     # Получаем все данные для проверки
-    period_rows = db_adapter.execute_query('''
+    cursor.execute('''
         SELECT date, caller_number, total_calls, calls_over_45s
         FROM daily_stats 
         WHERE date >= ? AND date <= ?
         ORDER BY date DESC, caller_number
-    ''', (week_start.isoformat(), week_end.isoformat()), fetch='all')
+    ''', (week_start.isoformat(), week_end.isoformat()))
     
-    if db_adapter.use_postgres:
-        data_in_period = [
-            {
-                'date': row['date'],
-                'caller_number': row['caller_number'],
-                'total_calls': row['total_calls'],
-                'calls_over_45s': row['calls_over_45s']
-            } for row in period_rows
-        ]
-    else:
-        data_in_period = [
-            {
-                'date': row[0],
-                'caller_number': row[1],
-                'total_calls': row[2],
-                'calls_over_45s': row[3]
-            } for row in period_rows
-        ]
+    data_in_period = cursor.fetchall()
+    conn.close()
     
     return jsonify({
         'today': today.isoformat(),
@@ -1398,7 +1518,14 @@ def debug_weekly():
             'label': f"{week_start.strftime('%d.%m')}-{week_end.strftime('%d.%m')}"
         },
         'dates_in_db': db_dates,
-        'data_in_last_7_days': data_in_period,
+        'data_in_last_7_days': [
+            {
+                'date': row[0],
+                'caller_number': row[1],
+                'total_calls': row[2],
+                'calls_over_45s': row[3]
+            } for row in data_in_period
+        ],
         'count_in_period': len(data_in_period)
     })
 

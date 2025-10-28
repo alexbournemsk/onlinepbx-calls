@@ -39,9 +39,6 @@ pbx_app.log
 *.sqlite
 *.sqlite3
 calls_history.db
-data/*.db
-data/*.sqlite
-data/*.sqlite3
 
 # API keys
 pbx_api_key.json
