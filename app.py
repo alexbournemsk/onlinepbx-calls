@@ -204,7 +204,7 @@ def get_calls_from_cache(start_stamp, end_stamp):
     if db_adapter.use_postgres:
         calls = [json.loads(row['call_data']) for row in rows]
     else:
-    calls = [json.loads(row[0]) for row in rows]
+        calls = [json.loads(row[0]) for row in rows]
     
     logging.info(f'Retrieved {len(calls)} calls from cache for period {start_stamp}-{end_stamp}')
     return calls
