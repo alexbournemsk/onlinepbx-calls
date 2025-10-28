@@ -7,6 +7,7 @@ services:
       - "8000:8000"
     volumes:
       - ./app.py:/app/app.py
+      - ./db_adapter.py:/app/db_adapter.py
       - ./templates:/app/templates
       # Для локального SQLite (если не используется Supabase)
       - ./data:/app/data
