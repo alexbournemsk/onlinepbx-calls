@@ -260,7 +260,7 @@ def get_trunks_from_cache(max_age_seconds=3600):
         if db_adapter.use_postgres:
             trunks = [json.loads(row['trunk_data']) for row in rows]
         else:
-        trunks = [json.loads(row[0]) for row in rows]
+            trunks = [json.loads(row[0]) for row in rows]
         logging.info(f'Retrieved {len(trunks)} trunks from cache')
         return trunks
     else:
@@ -370,13 +370,13 @@ def get_daily_stats_by_date(date_str):
                 'percentage_over_45s': row['percentage_over_45s']
             })
         else:
-        result.append({
-            'caller_number': row[0],
-            'description': row[1],
-            'total_calls': row[2],
-            'calls_over_45s': row[3],
-            'percentage_over_45s': row[4]
-        })
+            result.append({
+                'caller_number': row[0],
+                'description': row[1],
+                'total_calls': row[2],
+                'calls_over_45s': row[3],
+                'percentage_over_45s': row[4]
+            })
     
     return result
 
@@ -400,12 +400,12 @@ def get_all_stats_dates():
                 'total_calls': row['total_calls_count']
             })
         else:
-        result.append({
-            'date': row[0],
-            'start_stamp': row[1],
-            'end_stamp': row[2],
-            'total_calls': row[3]
-        })
+            result.append({
+                'date': row[0],
+                'start_stamp': row[1],
+                'end_stamp': row[2],
+                'total_calls': row[3]
+            })
     
     return result
 
@@ -450,7 +450,7 @@ def get_comprehensive_stats():
             calls_over_45s = row['calls_over_45s']
             percentage_over_45s = row['percentage_over_45s']
         else:
-        date, caller_number, description, total_calls, calls_over_45s, percentage_over_45s = row
+            date, caller_number, description, total_calls, calls_over_45s, percentage_over_45s = row
         
         key = (date, caller_number)
         stats_dict[key] = {
@@ -575,7 +575,7 @@ def get_comprehensive_stats_weekly():
             total_calls = row['total_calls']
             calls_over_45s = row['calls_over_45s']
         else:
-        date_str, caller_number, description, total_calls, calls_over_45s = row
+            date_str, caller_number, description, total_calls, calls_over_45s = row
         
         date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
         
