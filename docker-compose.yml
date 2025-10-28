@@ -11,6 +11,7 @@ services:
       - ./templates:/app/templates
       # Для локального SQLite (если не используется Supabase)
       - ./data:/app/data
+    command: sh -c "pip install psycopg2-binary==2.9.9 && python -u app.py"
     environment:
       - FLASK_ENV=production
       - DOMAIN=guitardo.onpbx.ru
