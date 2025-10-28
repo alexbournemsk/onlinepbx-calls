@@ -8,10 +8,18 @@ services:
     volumes:
       - ./app.py:/app/app.py
       - ./templates:/app/templates
+      # Для локального SQLite (если не используется Supabase)
+      - ./data:/app/data
     environment:
       - FLASK_ENV=production
       - DOMAIN=guitardo.onpbx.ru
       - AUTH_KEY=qJqxwdH7ZccfzS1F3UoStTRJSZHvfWTR5Dt4kiv7Og
+      
+      # Supabase PostgreSQL (активно)
+      - DATABASE_URL=postgresql://postgres:Aqxn5fjqHkmidknz05@db.fyzeoxwbvjxlgwmwreuo.supabase.co:5432/postgres
+      
+      # Для локального SQLite (закомментировано, используется Supabase):
+      # - DB_FILE=/app/data/calls_history.db
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
